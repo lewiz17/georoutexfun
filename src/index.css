@@ -1,0 +1,70 @@
+:root {
+  --accent: #3b82f6;
+  --bg: #111827;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: var(--bg);
+  color: white;
+  overflow: hidden;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+input,
+select,
+button {
+  padding: 10px 15px;
+  border-radius: 6px;
+  border: 1px solid #4b5563;
+  background: #374151;
+  color: white;
+  outline: none;
+  font-size: 14px;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--accent);
+}
+
+button {
+  background: var(--accent);
+  border: none;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+button:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.4);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+button:disabled {
+  background: #4b5563;
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-logo,
+.maplibregl-compact {
+  display: none !important;
+}
