@@ -23,9 +23,53 @@ GeoRoute Animator is a high-performance web application designed to create cinem
    - **Quality & Format**: Pick the resolution and aspect ratio (Vertical for Shorts/TikTok, Horizontal for YouTube).
 4. **Generate**: Click **"GENERAR VIDEO"**. The map will pre-load tiles and then start the recording.
 5. **Instant Cancel**: Use **"NUEVO RECORRIDO"** at any time to abort the current process and start a fresh one.
-6. **Download**: Once finished, click the зеленый **"DESCARGAR"** button.
+6. **Download**: Una vez finalizado, haz clic en el botón verde **"DESCARGAR"**.
+7. **Embed**: Haz clic en **"COMPARTIR"** para copiar automáticamente un código `<iframe>` listo para insertar en cualquier sitio web.
 
-## 📦 Local Installation
+## 📥 Cómo Insertar (Embed) en tu Web
+
+Tienes dos formas de integrar estos recorridos en tu sitio:
+
+### 1. Insertar Solo el Mapa Animado (Recomendado)
+Si quieres que en tu web **solo se vea el mapa y el recorrido** (sin el panel de controles), usa el parámetro `embed=true`. El botón "COMPARTIR" de la app ya genera este código automáticamente:
+
+```html
+<iframe 
+  src="https://tu-app.vercel.app/?origin=Madrid&dest=Paris&v=plane&embed=true" 
+  width="100%" 
+  height="500" 
+  frameborder="0" 
+  allowfullscreen>
+</iframe>
+```
+
+**Parámetros soportados:**
+- `origin`: Ciudad de origen (ej. `París`).
+- `dest`: Ciudad de destino (ej. `Londres`).
+- `co`: Código de país origen (ej. `FR`, `ES`, `CO`).
+- `cd`: Código de país destino.
+- `v`: Tipo de vehículo (`plane`, `top_sport_red`, `top_taxi`, `top_truck_grey`, `top_truck_green`).
+- `embed=true`: (Recomendado para webs) Oculta el panel superior y centra el mapa a pantalla completa. En este modo **no se graba video**, optimizando el rendimiento para uso interactivo.
+- `speed`: Modo de velocidad (`normal` para tiempo real, `fast` para timelapse rápido).
+- `color`: Color de la línea de ruta en formato Hex sin el '#' (ej. `ff5500`).
+- `tel=0`: Oculta el panel de telemetría (distancia/tiempo) si prefieres un mapa 100% limpio.
+- `zoom`: Nivel de zoom inicial (ej. `12`).
+- `pitch`: Inclinación inicial del mapa (ej. `45`).
+
+**Ejemplo de URL avanzada:**
+`https://tu-app.vercel.app/?origin=Bogota&dest=Medellin&v=top_sport_red&speed=fast&color=facc15&tel=1&zoom=8&pitch=40&embed=true`
+
+### 2. Insertar el Video Generado (HTML5)
+Si prefieres descargar el video `.webm` y alojarlo tú mismo, usa este código estándar:
+
+```html
+<video width="100%" height="auto" autoplay loop muted playsinline>
+  <source src="nombre_del_video.webm" type="video/webm">
+  Tu navegador no soporta videos HTML5.
+</video>
+```
+
+## 📦 Instalación Local
 
 ```bash
 # Install dependencies

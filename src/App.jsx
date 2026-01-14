@@ -4,7 +4,7 @@ import * as turf from '@turf/turf';
 import {
   Plane, Car, Navigation, Gauge, Clock, Download,
   MapPin, Play, Pause, RefreshCw, Layers, Zap, Settings,
-  Video, Monitor, MousePointer2, Move, Send, Info
+  Video, Monitor, MousePointer2, Move, Send, Info, Share2, Copy, Check
 } from 'lucide-react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './App.css';
@@ -19,6 +19,8 @@ function App() {
   const [isPaused, setIsPaused] = useState(false);
   const isPausedRef = useRef(false);
   const [telemetry, setTelemetry] = useState({ distance: 0, time: 0 });
+  const [isEmbed, setIsEmbed] = useState(false);
+  const [showTelemetry, setShowTelemetry] = useState(true);
 
   const recordedVideoBlob = useRef(null);
   const cachedRouteData = useRef(null);
@@ -36,16 +38,52 @@ function App() {
   const [routeColor, setRouteColor] = useState('#3b82f6');
   const [quality, setQuality] = useState('medium');
   const [ratio, setRatio] = useState('ratio-16-9');
+  const [copySuccess, setCopySuccess] = useState(false);
+
+  // Parse URL parameters on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pOrigin = params.get('origin');
+    const pDest = params.get('dest');
+    const pVehicle = params.get('v');
+    const pSpeed = params.get('speed'); // normal | fast
+    const pColor = params.get('color'); // hex
+    const pTel = params.get('tel'); // 1 | 0
+    const pZoom = params.get('zoom');
+    const pPitch = params.get('pitch');
+
+    if (pOrigin) setOrigin(pOrigin);
+    if (pDest) setDestination(pDest);
+    if (pVehicle) setVehicleType(pVehicle);
+    if (pCountryOrigin) setCountryOrigin(pCountryOrigin.toUpperCase());
+    if (pCountryDest) setCountryDest(pCountryDest.toUpperCase());
+    if (pEmbed) setIsEmbed(true);
+    if (pSpeed) setSpeedMode(pSpeed);
+    if (pColor) setRouteColor(pColor.startsWith('#') ? pColor : `#${pColor}`);
+    if (pTel === '0') setShowTelemetry(false);
+
+
+    // Auto-start in embed mode if parameters are complete
+    if (pEmbed && pOrigin && pDest) {
+      setTimeout(() => {
+        handleStartGeneration();
+      }, 1500);
+    }
+  }, []);
 
   useEffect(() => {
     if (map.current) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const pZoom = params.get('zoom');
+    const pPitch = params.get('pitch');
 
     map.current = new maplibregl.Map({
       container: mapContainer.current,
       style: 'https://tiles.openfreemap.org/styles/liberty',
       center: [-74.0721, 4.7110], // Centrado en Bogotá
-      zoom: 6,
-      pitch: 15, // Flattened for Top View
+      zoom: pZoom ? parseFloat(pZoom) : 6,
+      pitch: pPitch ? parseFloat(pPitch) : 15, // Flattened for Top View
       bearing: 0,
       preserveDrawingBuffer: true
     });
@@ -341,23 +379,27 @@ function App() {
 
     if (signal.aborted) return;
 
-    let videoBitsPerSecond = 4500000;
-    if (quality === 'high') videoBitsPerSecond = 8000000;
-    if (quality === 'low') videoBitsPerSecond = 1000000;
-
-    const mimeTypes = ['video/webm; codecs=vp9', 'video/webm; codecs=vp8', 'video/webm'];
-    let selectedMimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
-
-    const stream = canvas.captureStream(30);
-    let mediaRecorder = new MediaRecorder(stream, {
-      mimeType: selectedMimeType,
-      videoBitsPerSecond: videoBitsPerSecond
-    });
+    let mediaRecorder = null;
     let recordedChunks = [];
-    mediaRecorder.ondataavailable = e => {
-      if (e.data.size > 0) recordedChunks.push(e.data);
-    };
-    mediaRecorder.start();
+
+    if (!isEmbed) {
+      let videoBitsPerSecond = 4500000;
+      if (quality === 'high') videoBitsPerSecond = 8000000;
+      if (quality === 'low') videoBitsPerSecond = 1000000;
+
+      const mimeTypes = ['video/webm; codecs=vp9', 'video/webm; codecs=vp8', 'video/webm'];
+      let selectedMimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
+
+      const stream = canvas.captureStream(30);
+      mediaRecorder = new MediaRecorder(stream, {
+        mimeType: selectedMimeType,
+        videoBitsPerSecond: videoBitsPerSecond
+      });
+      mediaRecorder.ondataavailable = e => {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+      };
+      mediaRecorder.start();
+    }
 
     const easeInOutCubic = (x) => {
       return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
@@ -367,7 +409,7 @@ function App() {
     return new Promise((resolve) => {
       const step = () => {
         if (signal.aborted) {
-          mediaRecorder.stop();
+          if (mediaRecorder) mediaRecorder.stop();
           resolve();
           return;
         }
@@ -381,12 +423,16 @@ function App() {
         const progress = Math.min(rawProgress, 1);
 
         if (rawProgress > 1) {
-          mediaRecorder.stop();
-          setTimeout(() => {
-            const blob = new Blob(recordedChunks, { type: 'video/webm' });
-            recordedVideoBlob.current = blob;
+          if (mediaRecorder) {
+            mediaRecorder.stop();
+            setTimeout(() => {
+              const blob = new Blob(recordedChunks, { type: 'video/webm' });
+              recordedVideoBlob.current = blob;
+              resolve();
+            }, 500);
+          } else {
             resolve();
-          }, 500);
+          }
           return;
         }
 
@@ -636,6 +682,27 @@ function App() {
     }
   };
 
+  const handleShare = () => {
+    const baseUrl = window.location.origin;
+    const params = new URLSearchParams({
+      origin: origin,
+      dest: destination,
+      v: vehicleType,
+      co: countryOrigin,
+      cd: countryDest,
+      speed: speedMode,
+      color: routeColor.replace('#', ''),
+      tel: showTelemetry ? '1' : '0'
+    });
+    const shareUrl = `${baseUrl}/?${params.toString()}&embed=true`;
+    const iframeCode = `<iframe src="${shareUrl}" width="800" height="450" frameborder="0" allowfullscreen></iframe>`;
+
+    navigator.clipboard.writeText(iframeCode).then(() => {
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    });
+  };
+
   const countries = [
     { value: 'CO', label: 'Colombia' },
     { value: 'ES', label: 'España' },
@@ -650,105 +717,112 @@ function App() {
   ];
 
   return (
-    <div className="app">
-      <div className="ui">
-        <div className="controls-row">
-          <MapPin size={18} className="text-muted" />
-          <select value={countryOrigin} onChange={(e) => setCountryOrigin(e.target.value)}>
-            {countries.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-          </select>
-          <input
-            type="text"
-            placeholder="Ciudad origen"
-            value={origin}
-            onChange={(e) => setOrigin(e.target.value)}
-          />
-
-          <Send size={18} className="arrow" />
-
-          <select value={countryDest} onChange={(e) => setCountryDest(e.target.value)}>
-            {countries.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-          </select>
-          <input
-            type="text"
-            placeholder="Ciudad destino"
-            value={destination}
-            onChange={(e) => setDestination(e.target.value)}
-          />
-        </div>
-
-        <div className="controls-row">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Car size={18} />
-            <select value={vehicleType} onChange={(e) => setVehicleType(e.target.value)}>
-              <option value="top_sport_red">SUV Sport Pro</option>
-              <option value="top_taxi">Urban Taxi</option>
-              <option value="top_truck_grey">Cargo Grey</option>
-              <option value="top_truck_green">Logistics Green</option>
-              <option value="plane">Airliner Pro</option>
+    <div className={`app ${isEmbed ? 'mode-embed' : ''}`}>
+      {!isEmbed && (
+        <div className="ui">
+          <div className="controls-row">
+            <MapPin size={18} className="text-muted" />
+            <select value={countryOrigin} onChange={(e) => setCountryOrigin(e.target.value)}>
+              {countries.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Zap size={18} />
-            <select value={speedMode} onChange={(e) => setSpeedMode(e.target.value)}>
-              <option value="normal">Velocidad Real</option>
-              <option value="fast">Timelapse</option>
-            </select>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Layers size={18} />
-            <select value={routeStyle} onChange={(e) => setRouteStyle(e.target.value)}>
-              <option value="solid">Trazo Sólido</option>
-              <option value="dashed">Trazo Discontinuo</option>
-              <option value="dotted">Trazo de Puntos</option>
-            </select>
-          </div>
-
-          <div className="color-picker">
-            <Settings size={18} />
             <input
-              type="color"
-              value={routeColor}
-              onChange={(e) => setRouteColor(e.target.value)}
+              type="text"
+              placeholder="Ciudad origen"
+              value={origin}
+              onChange={(e) => setOrigin(e.target.value)}
+            />
+
+            <Send size={18} className="arrow" />
+
+            <select value={countryDest} onChange={(e) => setCountryDest(e.target.value)}>
+              {countries.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+            <input
+              type="text"
+              placeholder="Ciudad destino"
+              value={destination}
+              onChange={(e) => setDestination(e.target.value)}
             />
           </div>
 
-          <select value={quality} onChange={(e) => setQuality(e.target.value)}>
-            <option value="high">1080p | 8Mbps</option>
-            <option value="medium">720p | 4.5Mbps</option>
-            <option value="low">480p | 1.5Mbps</option>
-          </select>
+          <div className="controls-row">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Car size={18} />
+              <select value={vehicleType} onChange={(e) => setVehicleType(e.target.value)}>
+                <option value="top_sport_red">SUV Sport Pro</option>
+                <option value="top_taxi">Urban Taxi</option>
+                <option value="top_truck_grey">Cargo Grey</option>
+                <option value="top_truck_green">Logistics Green</option>
+                <option value="plane">Airliner Pro</option>
+              </select>
+            </div>
 
-          <select value={ratio} onChange={(e) => setRatio(e.target.value)}>
-            <option value="ratio-16-9">Horizontal 16:9</option>
-            <option value="ratio-9-16">Vertical 9:16</option>
-            <option value="ratio-1-1">Cuadrado 1:1</option>
-          </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Zap size={18} />
+              <select value={speedMode} onChange={(e) => setSpeedMode(e.target.value)}>
+                <option value="normal">Velocidad Real</option>
+                <option value="fast">Timelapse</option>
+              </select>
+            </div>
 
-          <button
-            onClick={handleStartGeneration}
-            className={isProcessing ? 'btn-cancel' : ''}
-          >
-            {isProcessing ? <RefreshCw className="animate-spin" size={18} /> : <Video size={18} />}
-            {isProcessing ? 'NUEVO RECORRIDO' : 'GENERAR VIDEO'}
-          </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Layers size={18} />
+              <select value={routeStyle} onChange={(e) => setRouteStyle(e.target.value)}>
+                <option value="solid">Trazo Sólido</option>
+                <option value="dashed">Trazo Discontinuo</option>
+                <option value="dotted">Trazo de Puntos</option>
+              </select>
+            </div>
 
-          {videoReady && (
-            <button onClick={handleDownload} className="btn-download">
-              <Download size={18} />
-              DESCARGAR
+            <div className="color-picker">
+              <Settings size={18} />
+              <input
+                type="color"
+                value={routeColor}
+                onChange={(e) => setRouteColor(e.target.value)}
+              />
+            </div>
+
+            <select value={quality} onChange={(e) => setQuality(e.target.value)}>
+              <option value="high">1080p | 8Mbps</option>
+              <option value="medium">720p | 4.5Mbps</option>
+              <option value="low">480p | 1.5Mbps</option>
+            </select>
+
+            <select value={ratio} onChange={(e) => setRatio(e.target.value)}>
+              <option value="ratio-16-9">Horizontal 16:9</option>
+              <option value="ratio-9-16">Vertical 9:16</option>
+              <option value="ratio-1-1">Cuadrado 1:1</option>
+            </select>
+
+            <button
+              onClick={handleStartGeneration}
+              className={isProcessing ? 'btn-cancel' : ''}
+            >
+              {isProcessing ? <RefreshCw className="animate-spin" size={18} /> : <Video size={18} />}
+              {isProcessing ? 'NUEVO RECORRIDO' : 'GENERAR VIDEO'}
             </button>
-          )}
+
+            {videoReady && (
+              <button onClick={handleDownload} className="btn-download">
+                <Download size={18} />
+                DESCARGAR
+              </button>
+            )}
+
+            <button onClick={handleShare} className="btn-share" title="Copiar código para insertar (Embed)">
+              {copySuccess ? <Check size={18} /> : <Share2 size={18} />}
+              {copySuccess ? 'COPIADO' : 'COMPARTIR'}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="container">
         <div className={`map-wrapper ${ratio}`}>
           <div ref={mapContainer} className="map" />
 
-          {showControls && (
+          {showControls && showTelemetry && (
             <div className="telemetry-overlay">
               <div className="telemetry-item">
                 <div className="icon"><Navigation size={20} /></div>
@@ -778,7 +852,7 @@ function App() {
             </div>
           )}
 
-          {statusText && (
+          {statusText && !isEmbed && (
             <div className="status">
               {statusText.includes('Grabando') && <span className="recording-led" />}
               {statusText.includes('listo') ? <Info size={14} style={{ marginRight: '6px' }} /> : null}

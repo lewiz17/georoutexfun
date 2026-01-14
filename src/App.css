@@ -95,6 +95,24 @@ button:disabled {
   background: linear-gradient(to right, #f97316, #ef4444) !important;
 }
 
+.btn-share {
+  background: linear-gradient(to right, #3b82f6, #2563eb) !important;
+}
+
+.mode-embed .container {
+  padding: 0;
+  height: 100vh;
+}
+
+.mode-embed .map-wrapper {
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .container {
   flex: 1;
   display: flex;
