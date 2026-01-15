@@ -55,6 +55,7 @@ Si quieres que en tu web **solo se vea el mapa y el recorrido** (sin el panel de
 - `tel=0`: Oculta el panel de telemetría (distancia/tiempo) si prefieres un mapa 100% limpio.
 - `zoom`: Nivel de zoom inicial (ej. `12`).
 - `pitch`: Inclinación inicial del mapa (ej. `45`).
+- `dl=1`: (Opcional) Fuerza la grabación de video en modo embed y muestra el botón de descarga al finalizar la animación.
 
 **Ejemplo de URL avanzada:**
 `https://tu-app.vercel.app/?origin=Bogota&dest=Medellin&v=top_sport_red&speed=fast&color=facc15&tel=1&zoom=8&pitch=40&embed=true`

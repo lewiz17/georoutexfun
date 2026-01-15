@@ -19,52 +19,40 @@ function App() {
   const [isPaused, setIsPaused] = useState(false);
   const isPausedRef = useRef(false);
   const [telemetry, setTelemetry] = useState({ distance: 0, time: 0 });
-  const [isEmbed, setIsEmbed] = useState(false);
-  const [showTelemetry, setShowTelemetry] = useState(true);
+  // Removed explicit state init here, moving to unified block
+
 
   const recordedVideoBlob = useRef(null);
   const cachedRouteData = useRef(null);
   const abortController = useRef(null);
   const vehicleIcons = useRef({});
 
-  // Form state - Default to Colombia
-  const [countryOrigin, setCountryOrigin] = useState('CO');
-  const [origin, setOrigin] = useState('Bogotá');
-  const [countryDest, setCountryDest] = useState('CO');
-  const [destination, setDestination] = useState('Medellín');
-  const [vehicleType, setVehicleType] = useState('top_sport_red');
-  const [speedMode, setSpeedMode] = useState('normal');
+  // Helper to parse params once
+  const getParams = () => new URLSearchParams(window.location.search);
+
+  // Form state - Initialize from URL params to avoid stale closures
+  const [countryOrigin, setCountryOrigin] = useState(() => getParams().get('co')?.toUpperCase() || 'CO');
+  const [origin, setOrigin] = useState(() => getParams().get('origin') || 'Bogotá');
+  const [countryDest, setCountryDest] = useState(() => getParams().get('cd')?.toUpperCase() || 'CO');
+  const [destination, setDestination] = useState(() => getParams().get('dest') || 'Medellín');
+  const [vehicleType, setVehicleType] = useState(() => getParams().get('v') || 'top_sport_red');
+  const [speedMode, setSpeedMode] = useState(() => getParams().get('speed') || 'normal');
   const [routeStyle, setRouteStyle] = useState('solid');
-  const [routeColor, setRouteColor] = useState('#3b82f6');
+  const [routeColor, setRouteColor] = useState(() => {
+    const pColor = getParams().get('color');
+    return pColor ? (pColor.startsWith('#') ? pColor : `#${pColor}`) : '#3b82f6';
+  });
   const [quality, setQuality] = useState('medium');
   const [ratio, setRatio] = useState('ratio-16-9');
   const [copySuccess, setCopySuccess] = useState(false);
 
-  // Parse URL parameters on mount
+  const [isEmbed] = useState(() => getParams().get('embed') === 'true');
+  const [showTelemetry, setShowTelemetry] = useState(() => getParams().get('tel') !== '0');
+  const [lastDlParam] = useState(() => getParams().get('dl') === '1');
+
+  // Auto-start in embed mode
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const pOrigin = params.get('origin');
-    const pDest = params.get('dest');
-    const pVehicle = params.get('v');
-    const pSpeed = params.get('speed'); // normal | fast
-    const pColor = params.get('color'); // hex
-    const pTel = params.get('tel'); // 1 | 0
-    const pZoom = params.get('zoom');
-    const pPitch = params.get('pitch');
-
-    if (pOrigin) setOrigin(pOrigin);
-    if (pDest) setDestination(pDest);
-    if (pVehicle) setVehicleType(pVehicle);
-    if (pCountryOrigin) setCountryOrigin(pCountryOrigin.toUpperCase());
-    if (pCountryDest) setCountryDest(pCountryDest.toUpperCase());
-    if (pEmbed) setIsEmbed(true);
-    if (pSpeed) setSpeedMode(pSpeed);
-    if (pColor) setRouteColor(pColor.startsWith('#') ? pColor : `#${pColor}`);
-    if (pTel === '0') setShowTelemetry(false);
-
-
-    // Auto-start in embed mode if parameters are complete
-    if (pEmbed && pOrigin && pDest) {
+    if (isEmbed && origin && destination) {
       setTimeout(() => {
         handleStartGeneration();
       }, 1500);
@@ -382,7 +370,8 @@ function App() {
     let mediaRecorder = null;
     let recordedChunks = [];
 
-    if (!isEmbed) {
+    // Record if not embed OR if embed has dl=1
+    if (!isEmbed || lastDlParam) {
       let videoBitsPerSecond = 4500000;
       if (quality === 'high') videoBitsPerSecond = 8000000;
       if (quality === 'low') videoBitsPerSecond = 1000000;
@@ -569,14 +558,21 @@ function App() {
 
       const pathLength = turf.length(routeGeojson);
       // Fixed Speed Logic
+      // Fixed Speed Logic
       // For cars/domestic: 3km/s (max 60s)
       // For planes/international: Faster factor to avoid long videos, max 40s
-      let durationSeconds;
+      let baseDuration;
       if (isInternational) {
-        durationSeconds = Math.max(20, Math.min(40, pathLength / 200));
+        baseDuration = Math.max(20, Math.min(40, pathLength / 200));
       } else {
-        durationSeconds = Math.max(15, pathLength / 3);
+        baseDuration = Math.max(15, pathLength / 3);
       }
+
+      // Apply Speed Mode Modifier
+      let durationSeconds = baseDuration;
+      if (speedMode === 'fast') durationSeconds = baseDuration * 0.5;
+      if (speedMode === 'slow') durationSeconds = baseDuration * 2.0;
+
       const totalFrames = Math.round(durationSeconds * 30);
 
       cachedRouteData.current = { geometry: routeGeojson, vehicleType: currentVehicleType };
@@ -637,12 +633,17 @@ function App() {
       try {
         const pathLength = turf.length(cachedRouteData.current.geometry);
         const isInternational = countryOrigin !== countryDest;
-        let durationSeconds;
+        let baseDuration;
         if (isInternational) {
-          durationSeconds = Math.max(20, Math.min(40, pathLength / 200));
+          baseDuration = Math.max(20, Math.min(40, pathLength / 200));
         } else {
-          durationSeconds = Math.max(15, pathLength / 3);
+          baseDuration = Math.max(15, pathLength / 3);
         }
+
+        let durationSeconds = baseDuration;
+        if (speedMode === 'fast') durationSeconds = baseDuration * 0.5;
+        if (speedMode === 'slow') durationSeconds = baseDuration * 2.0;
+
         const totalFrames = Math.round(durationSeconds * 30);
 
         const startPoint = cachedRouteData.current.geometry.coordinates[0];
@@ -762,6 +763,7 @@ function App() {
               <select value={speedMode} onChange={(e) => setSpeedMode(e.target.value)}>
                 <option value="normal">Velocidad Real</option>
                 <option value="fast">Timelapse</option>
+                <option value="slow">Lento (Cinemático)</option>
               </select>
             </div>
 
@@ -857,6 +859,22 @@ function App() {
               {statusText.includes('Grabando') && <span className="recording-led" />}
               {statusText.includes('listo') ? <Info size={14} style={{ marginRight: '6px' }} /> : null}
               {statusText}
+            </div>
+          )}
+
+          {isEmbed && statusText && !statusText.includes('Grabando') && (
+            <div className="embed-status-overlay">
+              <RefreshCw className="animate-spin" size={24} color="var(--primary)" />
+              <span>{statusText}</span>
+            </div>
+          )}
+
+          {isEmbed && videoReady && lastDlParam && (
+            <div className="embed-status-overlay" style={{ background: 'transparent', border: 'none', boxShadow: 'none' }}>
+              <button onClick={handleDownload} className="btn-download" style={{ pointerEvents: 'auto', padding: '1rem 2rem', fontSize: '1.2rem' }}>
+                <Download size={24} />
+                DESCARGAR VIDEO
+              </button>
             </div>
           )}
         </div>
